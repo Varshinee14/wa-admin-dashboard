@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Campus Admin Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body class="bg-gray-100">
+
+<!-- LOGIN -->
+<div id="login" class="flex items-center justify-center h-screen bg-gradient-to-r from-indigo-500 to-purple-600">
+  <div class="bg-white p-10 rounded-2xl shadow-2xl w-96">
+    <h2 class="text-2xl font-bold text-center mb-6">Admin Login</h2>
+    <input id="password" type="password"
+      class="border p-3 w-full mb-4 rounded-lg"
+      placeholder="Enter Password" />
+    <button onclick="login()"
+      class="bg-indigo-600 text-white w-full py-3 rounded-lg hover:bg-indigo-700">
+      Login
+    </button>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="hidden flex h-screen">
+
+  <!-- Sidebar -->
+  <div class="w-64 bg-white shadow-xl p-6">
+    <h2 class="text-xl font-bold mb-6">Campus Admin</h2>
+    <ul class="space-y-4">
+      <li class="font-semibold text-indigo-600">Dashboard</li>
+      <li class="text-gray-600">Tickets</li>
+      <li class="text-gray-600">Analytics</li>
+    </ul>
+  </div>
+
+  <!-- Main Content -->
+  <div class="flex-1 p-8 overflow-y-auto">
+
+    <h1 class="text-3xl font-bold mb-8">Ticket Overview</h1>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-3 gap-6 mb-8">
+      <div class="bg-white p-6 rounded-2xl shadow-lg">
+        <h3>Total Tickets</h3>
+        <p id="total" class="text-3xl font-bold mt-2"></p>
+      </div>
+      <div class="bg-white p-6 rounded-2xl shadow-lg">
+        <h3>Open</h3>
+        <p id="open" class="text-3xl font-bold text-red-500 mt-2"></p>
+      </div>
+      <div class="bg-white p-6 rounded-2xl shadow-lg">
+        <h3>Closed</h3>
+        <p id="closed" class="text-3xl font-bold text-green-500 mt-2"></p>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="bg-white p-6 rounded-2xl shadow-lg mb-8">
+      <canvas id="ticketChart"></canvas>
+    </div>
+
+    <!-- Search -->
+    <input type="text" id="search"
+      placeholder="Search by Room / Category"
+      onkeyup="filterTickets()"
+      class="border p-3 rounded-lg mb-4 w-full">
+
+    <!-- Table -->
+    <div class="bg-white rounded-2xl shadow-lg overflow-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gray-100">
+          <tr>
+            <th class="p-3">ID</th>
+            <th>Category</th>
+            <th>Room</th>
+            <th>Priority</th>
+            <th>Status</th>
+            <th>Assign</th>
+          </tr>
+        </thead>
+        <tbody id="tickets"></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const BACKEND_URL = "https://YOUR-RENDER-URL.onrender.com";
+let allTickets = [];
+
+function login() {
+  if (document.getElementById("password").value === "admin123") {
+    document.getElementById("login").classList.add("hidden");
+    document.getElementById("dashboard").classList.remove("hidden");
+    fetchTickets();
+    setInterval(fetchTickets, 10000);
+  } else {
+    alert("Wrong password");
+  }
+}
+
+async function fetchTickets() {
+  const res = await fetch(`${BACKEND_URL}/tickets`);
+  const tickets = await res.json();
+  allTickets = tickets;
+
+  document.getElementById("total").innerText = tickets.length;
+  document.getElementById("open").innerText =
+    tickets.filter(t => t.status === "Open").length;
+  document.getElementById("closed").innerText =
+    tickets.filter(t => t.status === "Closed").length;
+
+  renderTable(tickets);
+  renderChart(tickets);
+}
+
+function renderTable(tickets) {
+  const table = document.getElementById("tickets");
+  table.innerHTML = "";
+
+  tickets.forEach(ticket => {
+    const priorityColor =
+      ticket.priority === "high" ? "text-red-500" :
+      ticket.priority === "medium" ? "text-yellow-500" :
+      "text-green-500";
+
+    table.innerHTML += `
+      <tr class="border-t hover:bg-gray-50">
+        <td class="p-3 font-semibold">${ticket.id}</td>
+        <td>${ticket.category || ""}</td>
+        <td>${ticket.room || ""}</td>
+        <td class="${priorityColor} font-bold">${ticket.priority || ""}</td>
+        <td>
+          <select onchange="updateTicket('${ticket.id}', this.value, '${ticket.assigned_to || ""}')"
+            class="border p-1 rounded">
+            <option ${ticket.status==="Open"?"selected":""}>Open</option>
+            <option ${ticket.status==="In Progress"?"selected":""}>In Progress</option>
+            <option ${ticket.status==="Closed"?"selected":""}>Closed</option>
+          </select>
+        </td>
+        <td>
+          <input value="${ticket.assigned_to || ""}"
+            onblur="updateTicket('${ticket.id}', '${ticket.status}', this.value)"
+            class="border p-1 rounded"/>
+        </td>
+      </tr>
+    `;
+  });
+}
+
+async function updateTicket(id, status, assigned_to) {
+  await fetch(`${BACKEND_URL}/update-ticket`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ticket_id: id,
+      status: status,
+      assigned_to: assigned_to
+    })
+  });
+  fetchTickets();
+}
+
+function renderChart(tickets) {
+  const ctx = document.getElementById("ticketChart");
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ["Open", "In Progress", "Closed"],
+      datasets: [{
+        label: "Tickets",
+        data: [
+          tickets.filter(t => t.status==="Open").length,
+          tickets.filter(t => t.status==="In Progress").length,
+          tickets.filter(t => t.status==="Closed").length
+        ]
+      }]
+    }
+  });
+}
+
+function filterTickets() {
+  const search = document.getElementById("search").value.toLowerCase();
+  const filtered = allTickets.filter(t =>
+    (t.room || "").toLowerCase().includes(search) ||
+    (t.category || "").toLowerCase().includes(search)
+  );
+  renderTable(filtered);
+}
+</script>
+
+</body>
+</html>
